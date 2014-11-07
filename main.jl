@@ -1,14 +1,16 @@
 using PyPlot
-using Sundials
+using SDE
 import Base.show
 
 tmax = 1e1
 dt = 1e-4
+R = 1
 init = [0.2,0.2,0.1,0.1,0.0,0.0,0.0,0.0,0.0,0.0]
 
 I = 1.0
 M = 1.0
 g = 9.8
+mu = 0.1
 wn_rp = 9.0
 wn_z = 5.0
 wn_xy = 2.0
@@ -24,6 +26,7 @@ A = [
      zeros(2,8) eye(2);
      zeros(2,10)
     ]
+
 B = [
      zeros(5,3);
      1/M 0 0;
@@ -32,30 +35,34 @@ B = [
      0 0 1/I;
     ]
 
-#show(A)
+C = [
+     zeros(3,3);
+     mu * eye(3,3);
+     zeros(4,3);
+    ]
 
-function f(t, yin, ydot)
-  p = yin[1:3]
-  dp = yin[4:6]
-  a = yin[7:8]
-  da = yin[9:10]
+
+function f(x)
+  p = x[1:3]
+  dp = x[4:6]
+  a = x[7:8]
+  da = x[9:10]
+
   acc_des = (Kp*(-p) + Kdp*(-dp));
   att_des = 1/g .* [0 -1.0 0; 1.0 0 0] * acc_des
-  u = [
+
+  U = [
        (acc_des[3]);
        Ka * (att_des-a) + Kda * (-da)
       ]
-  #show(u)
-  #print('\n')
-  ydot[:] = A*yin + B*u
-  #show(ydot)
-  print('\n')
+
+  A*x + B*U
 end;
 
 t = [0:dt:tmax]
 
-pos = Sundials.cvode(f, init, t)
+X,T = SDE.em(f, x->C, init, tmax, dt, R)
 
 figure()
-#show(pos)
-plot3D(pos[:,1],pos[:,2],pos[:,3])
+temp = X'
+plot3D(temp[:,1],temp[:,2],temp[:,3])
