@@ -2,8 +2,8 @@ using PyPlot
 using Sundials
 import Base.show
 
-tmax = 1e0
-dt = 1e-6
+tmax = 1e1
+dt = 1e-4
 init = [0.2,0.2,0.1,0.1,0.0,0.0,0.0,0.0,0.0,0.0]
 
 I = 1.0
@@ -47,7 +47,7 @@ function f(t, yin, ydot)
       ]
   #show(u)
   #print('\n')
-  ydot = A*yin + B*u
+  ydot[:] = A*yin + B*u
   #show(ydot)
   print('\n')
 end;
