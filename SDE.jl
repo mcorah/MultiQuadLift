@@ -18,7 +18,7 @@ module SDE
     #The number of random variables is not given explicitly
     nW = size(g(X0),2)
 
-    dW = sqrt(dt) * randn(N,nW)
+    dW = sqrt(dt) * randn(nW,N)
 
     L = N/R
     Dt = R*dt
@@ -28,10 +28,11 @@ module SDE
 
     for i = 2:L
       X = Xs[:,i-1]
-      Wi = sum(dW[ R*(i-1)+1:R*i, : ])
+      Wi = mapslices(sum, dW[:, R*(i-1)+1:R*i], 2)
       X = X + f(X)*Dt + g(X)*Wi
       Xs[:,i] = X
     end
+
     return Xs,T
   end
 end
