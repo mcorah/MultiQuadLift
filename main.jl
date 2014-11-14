@@ -1,66 +1,29 @@
+using Quadrotor
 using PyPlot
 using SDE
 
-tmax = 1e1
+tmax = 2e1
 dt = 1e-4
 R = 1
-init = [0.2,0.2,0.1,0.1,0.0,0.0,0.0,0.0,0.0,0.0]
+init = [0.2,0.2,0.1,0.1,0.0,0.0,0.0,0.0,0.0,0.0,1.0]
+
 
 I = 1.0
 M = 1.0
-g = 9.8
-mu = 0.1
 wn_rp = 9.0
 wn_z = 5.0
 wn_xy = 2.0
-Kp=M * diagm([wn_xy^2,wn_xy^2,wn_z^2])
-Kdp=M * diagm([wn_xy,wn_xy,wn_z])
-Ka=I * diagm([wn_rp^2,wn_rp^2])
-Kda=I * diagm([wn_rp,wn_rp])
+mu = 0.1
 
-A = [
-     zeros(3,3) eye(3) zeros(3,4);
-     zeros(2,6) [0 g; -g 0] zeros(2,2);
-     zeros(1,10);
-     zeros(2,8) eye(2);
-     zeros(2,10)
-    ]
+mass_params = MassParams(M,I)
 
-B = [
-     zeros(5,3);
-     1/M 0 0;
-     zeros(2,3);
-     0 1/I 0;
-     0 0 1/I;
-    ]
+gains = criticallyDamped(mass_params, wn_xy, wn_z, wn_rp)
 
-C = [
-     zeros(3,3);
-     mu/M * eye(3,3);
-     zeros(4,3);
-    ]
+params = QuadrotorParams(mass_params, gains, mu)
 
+system = createQuadrotorSystem(params)
 
-function f(x)
-  p = [eye(3) zeros(3,7)]
-  dp = [zeros(3,3) eye(3) zeros(3,4)]
-  a = [zeros(2,6) eye(2) zeros(2,2)]
-  da = [zeros(2,8) eye(2)]
-
-  acc_des = (Kp*(-p) + Kdp*(-dp));
-  att_des = 1/g .* [0 -1.0 0; 1.0 0 0] * acc_des
-
-  U = [
-       (acc_des[3,:]);
-       Ka * (att_des-a) + Kda * (-da)
-      ]
-
-  (A + B*U) * x
-end;
-
-t = [0:dt:tmax]
-
-@time X,T = SDE.em(f, x->C, init, tmax, dt, R)
+@time X,T = SDE.em(system, init, tmax, dt, R, sample_rate = 100)
 
 figure()
 temp = X'
