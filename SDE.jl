@@ -38,7 +38,7 @@ function em(model::Model, X0, tf, dt, R; sample_rate = 1)
   sample = 1
   X = X0
 
-  Wi = zeros(size(dW,1),1)
+  Wi = zeros(size(dW,1))
   inter_sample = 0
   for i = 2:L
     Wi[:] = mapslices(sum, dW[:, R*(i-1)+1:R*i], 2)
