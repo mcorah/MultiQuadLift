@@ -1,6 +1,5 @@
 using PyPlot
 using SDE
-import Base.show
 
 tmax = 1e1
 dt = 1e-4
@@ -37,31 +36,31 @@ B = [
 
 C = [
      zeros(3,3);
-     mu * eye(3,3);
+     mu/M * eye(3,3);
      zeros(4,3);
     ]
 
 
 function f(x)
-  p = x[1:3]
-  dp = x[4:6]
-  a = x[7:8]
-  da = x[9:10]
+  p = [eye(3) zeros(3,7)]
+  dp = [zeros(3,3) eye(3) zeros(3,4)]
+  a = [zeros(2,6) eye(2) zeros(2,2)]
+  da = [zeros(2,8) eye(2)]
 
   acc_des = (Kp*(-p) + Kdp*(-dp));
   att_des = 1/g .* [0 -1.0 0; 1.0 0 0] * acc_des
 
   U = [
-       (acc_des[3]);
+       (acc_des[3,:]);
        Ka * (att_des-a) + Kda * (-da)
       ]
 
-  A*x + B*U
+  (A + B*U) * x
 end;
 
 t = [0:dt:tmax]
 
-X,T = SDE.em(f, x->C, init, tmax, dt, R)
+@time X,T = SDE.em(f, x->C, init, tmax, dt, R)
 
 figure()
 temp = X'
