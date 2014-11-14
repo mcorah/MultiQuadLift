@@ -26,11 +26,10 @@ module SDE
     Xs = zeros(length(X0),N)
     Xs[:,1] = X0
 
+    Wi = zeros(size(dW,1),1)
     for i = 2:L
-      X = Xs[:,i-1]
-      Wi = mapslices(sum, dW[:, R*(i-1)+1:R*i], 2)
-      X = X + f(X)*Dt + g(X)*Wi
-      Xs[:,i] = X
+      Wi[:] = mapslices(sum, dW[:, R*(i-1)+1:R*i], 2)
+      Xs[:,i] = Xs[:,i-1] + f(Xs[:,i-1])*Dt + g(Xs[:,i-1])*Wi
     end
 
     return Xs,T
