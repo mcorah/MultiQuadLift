@@ -34,4 +34,10 @@ module SDE
 
     return Xs,T
   end
+
+  type Model
+    f::Function
+    g::Function
+    Model(fn::Matrix{Float64}, gn::Matrix{Float64}) = new(x -> fn*x, x -> gn)
+  end
 end
