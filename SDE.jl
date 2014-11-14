@@ -18,12 +18,12 @@ Based on examples from:
 An Algorithmic Introduction to Numerical Simulation of Stochastic Differential
 Equations by Desmond Higham
 =#
-em(f, g, X0, tf, dt, R) =
-  em(Model(f,g), X0, tf, dt, R)
-function em(model::Model, X0, tf, dt, R)
-  T = [0:dt:tf]'
+em(f, g, X0, tf, dt, R; sample_rate = 1) =
+  em(Model(f,g), X0, tf, dt, R, sample_rate)
+function em(model::Model, X0, tf, dt, R; sample_rate = 1)
+  T = [0:dt*sample_rate:tf]'
 
-  N = length(T)
+  N::Int64 = floor(tf/dt) + 1
 
   #The number of random variables is not given explicitly
   nW = size(model.g(X0),2)
@@ -33,13 +33,20 @@ function em(model::Model, X0, tf, dt, R)
   L = N/R
   Dt = R*dt
 
-  Xs = zeros(length(X0),N)
+  Xs = zeros(length(X0),length(T))
   Xs[:,1] = X0
+  sample = 1
+  X = X0
 
   Wi = zeros(size(dW,1),1)
   for i = 2:L
     Wi[:] = mapslices(sum, dW[:, R*(i-1)+1:R*i], 2)
-    Xs[:,i] = Xs[:,i-1] + model.f(Xs[:,i-1])*Dt + model.g(Xs[:,i-1])*Wi
+    X[:] = X + model.f(X)*Dt + model.g(X)*Wi
+
+    if (i-1) % sample_rate == 0
+      sample += 1
+      Xs[:,sample] = X
+    end
   end
 
   return Xs,T
