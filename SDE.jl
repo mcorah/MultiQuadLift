@@ -3,13 +3,13 @@ module SDE
 type Model
   f::Function
   g::Function
-  Model(f::Matrix{Float64}, g::Matrix{Float64}) = new(x -> f*x, x -> g)
+  Model(f::Matrix{Float64}, g::Matrix{Float64}) = new((t,x) -> f*x, (t,x) -> g)
   Model(f::Function, g::Function) = new(f, g)
 end
 
 #=
 Euler-Maruyama method
-dX(t) = f(X(t))dt + g(X(t))dW(t)
+dX(t,X) = f(t,X(t))dt + g(t,X(t))dW(t)
 t0 <= t <= tf
 Brownian steps occur at a rate dt
 R Brownian steps per step of integration
@@ -26,7 +26,7 @@ function em(model::Model, X0, tf, dt, R; sample_rate = 1)
   N::Int64 = floor(tf/dt) + 1
 
   #The number of random variables is not given explicitly
-  nW = size(model.g(X0),2)
+  nW = size(model.g(0,X0),2)
 
   dW = sqrt(dt) * randn(nW,N)
 
@@ -40,9 +40,12 @@ function em(model::Model, X0, tf, dt, R; sample_rate = 1)
 
   Wi = zeros(size(dW,1))
   inter_sample = 0
+  t = 0
   for i = 2:L
+    t += Dt
+
     Wi[:] = mapslices(sum, dW[:, R*(i-1)+1:R*i], 2)
-    X[:] = X + model.f(X)*Dt + model.g(X)*Wi
+    X[:] = X + model.f(t,X)*Dt + model.g(t,X)*Wi
 
     inter_sample += 1
     if inter_sample == sample_rate
