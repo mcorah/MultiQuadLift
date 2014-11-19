@@ -3,7 +3,7 @@ module SDE
 type Model
   f::Function
   g::Function
-  Model(f::Matrix{Float64}, g::Matrix{Float64}) = new((t,x) -> f*x, (t,x) -> g)
+  Model(f::AbstractArray{Float64}, g::AbstractArray{Float64}) = new((t,x) -> f*x, (t,x) -> g)
   Model(f::Function, g::Function) = new(f, g)
 end
 
@@ -36,7 +36,7 @@ function em(model::Model, X0, tf, dt, R; sample_rate = 1)
   Xs = zeros(length(X0),length(T))
   Xs[:,1] = X0
   sample = 1
-  X = X0
+  X = deepcopy(X0)
 
   Wi = zeros(size(dW,1))
   inter_sample = 0
