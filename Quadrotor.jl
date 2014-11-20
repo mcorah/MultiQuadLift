@@ -12,10 +12,10 @@ Global parameters and matrices
 
 g = 9.80665
 
-linear_dynamics =
+linear_dynamics(thrust = g) =
   [
     zeros(3,3) eye(3) zeros(3,4);
-    zeros(2,6) [0 g; -g 0] zeros(2,2);
+    zeros(2,6) [0 thrust; -thrust 0] zeros(2,2);
     zeros(1,10);
     zeros(2,8) eye(2);
     zeros(2,10)
@@ -136,8 +136,8 @@ function createQuadrotorSystem(params::QuadrotorParams, set_point=[0,0,0])
 
   controller = generateController(params, pos, command)
 
-  println("Sizes: $(size(linear_dynamics)), $(size(controller))")
-  dynamics = block_diag(linear_dynamics,0) + [controller; zeros(1,11)]
+  println("Sizes: $(size(linear_dynamics())), $(size(controller))")
+  dynamics = block_diag(linear_dynamics(),0) + [controller; zeros(1,11)]
   noise = params.mu/params.mass.M * [noise_mapping; 0 0 0]
 
   SDE.Model(dynamics, noise)
@@ -148,7 +148,7 @@ function createMultiAgentSystem(params::MultiAgentParams)
   dist = params.dist
   quad_params = params.quadrotor
 
-  l_quad = size(linear_dynamics, 1)
+  l_quad = size(linear_dynamics(), 1)
   num_quad = prod(dim)
   num_mat = num_quad * l_quad + 1
 
@@ -179,7 +179,7 @@ function createMultiAgentSystem(params::MultiAgentParams)
         command = State(p, dp, a, da)
 
         controller = generateController(quad_params, pos, command)
-        quad_dynamics = [zeros(l_quad,l_quad*(ind-1)) linear_dynamics zeros(l_quad, l_quad * (num_quad-ind)+1)] + controller
+        quad_dynamics = [zeros(l_quad,l_quad*(ind-1)) linear_dynamics() zeros(l_quad, l_quad * (num_quad-ind)+1)] + controller
         system_dynamics[1+(ind-1)*l_quad:ind*l_quad, :] = quad_dynamics
         noise_dynamics[1+(ind-1)*l_quad:ind*l_quad, 1+(ind-1)*size(noise_mapping,2):ind*size(noise_mapping,2)] = quad_params.mu/quad_params.mass.M * noise_mapping
       end
