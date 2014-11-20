@@ -117,6 +117,121 @@ function generateController(params::QuadrotorParams, pos::State, command::State)
 
   control_mapping*U
 end
+
+abstract AbstractSystem
+
+abstract Specification
+getSystem(x::Specification) = x.container
+setSystem(x::Specification, s::AbstractSystem) = x.container = s
+height(x::Specification) = height(getSystem(x))
+noiseWidth(x::Specification) = noiseWidth(getSystem(x))
+stateIndex(x::Specification) = stateIndex(getSystem(x))
+noiseIndex(x::Specification) = noiseIndex(getSystem(x))
+
+
+
+type System <: AbstractSystem
+  state_offset::Integer
+  noise_offset::Integer
+  specification::Specification
+  parent::System
+  System(s = 0, n = 0) = new(s,n)
+end
+function setSpecification(sys::System, spec::Specification)
+  sys.specification = spec
+  setSystem(spec,sys)
+end
+numState(x::System) = numState(x.specification)
+numNoise(x::System) = numNoise(x.specification)
+height(x::System) = (isdefined(x, :parent) ? height(x.parent) : numState(x)+1)
+noiseWidth(x::System) = (isdefined(x, :parent) ? height(x.parent) : numNoise(x))
+stateIndex(x::System) = x.state_offset + (isdefined(x, :parent) ? stateIndex(x.parent) : 1)
+noiseIndex(x::System) = x.noise_offset + (isdefined(x, :parent) ? noiseIndex(x.parent) : 1)
+stateIndices(x::System) = stateIndex(x) : stateIndex(x) + numState(x) - 1
+noiseIndices(x::System) = noiseIndex(x) : noiseIndex(x) + numNoise(x) - 1
+system_dynamics(system::System) = system_dynamics(system.specification)
+noise_dynamics(system::System) = noise_dynamics(system.specification)
+
+function localDynamicsMatrix(matrix, x::Specification)
+  [spzeros(numState(x), stateIndex(x)-1) matrix spzeros(numState(x), height(x)-stateIndex(x)-numState(x)+1)]
+end
+function localNoiseMatrix(matrix, x::Specification)
+  [spzeros(numNoise(x), noiseIndex(x)-1) matrix spzeros(numNoise(x), noiseWidth(x)-noiseIndex(x)-numNoise(x)+1)]
+end
+
+type SystemArray <: Specification
+  members::Array{System,1}
+  container::System
+  SystemArray() = new([])
+  SystemArray(c::System) = new(System[],c)
+end
+numState(x::SystemArray) = mapreduce(numState,+,0,x.members)
+numNoise(x::SystemArray) = mapreduce(numNoise,+,0,x.members)
+function push(x::SystemArray, s::System)
+  s.state_offset = mapreduce(numState,+,0,x.members)
+  s.noise_offset = mapreduce(numNoise,+,0,x.members)
+  x.members = [x.members,s]
+end
+function system_dynamics(x::SystemArray)
+  d = spzeros(numState(x),height(x))
+  for i = 1:length(x.members)
+    member = x.members[i]
+    d[stateIndices(member),:] = system_dynamics(member)
+  end
+  d
+end
+
+abstract HasPosition <: Specification
+abstract HasOrientation <: Specification
+abstract Estimator
+
+type Link
+  k::Real
+  target::Specification
+end
+
+type QuadrotorController
+  position_estimator::Estimator
+  dposition_estimator::Estimator
+  attitude_estimator::Estimator
+  dattitude_estimator::Estimator
+end
+
+type QuadrotorSpecification <: Specification
+  container::System
+  params::QuadrotorParams
+  #links::Link
+  QuadrotorSpecification() = new()
+end
+numState(::QuadrotorSpecification) = 10
+numNoise(::QuadrotorSpecification) = 10
+posStates(::QuadrotorSpecification) = 1:3
+dposStates(::QuadrotorSpecification) = 4:6
+dposStates(::QuadrotorSpecification) = 4:6
+attStates(::QuadrotorSpecification) = 7:8
+dattStates(::QuadrotorSpecification) = 9:10
+system_dynamics(quad::QuadrotorSpecification) = localDynamicsMatrix(linear_dynamics(), quad)
+localNoiseMatrix(quad::QuadrotorSpecification) =
+  local_noise(x.params.mu / x.params.mass.m * noise_mapping, quad)
+
+
+type GlobalEstimator <: Estimator
+  parent::QuadrotorSpecification
+end
+
+type RelativeEstimator <: Estimator
+  parent::QuadrotorSpecification
+end
+
+type Payload <: Specification
+  params::MassParams
+  links::Link
+end
+numState(::Payload) = 6
+numNoise(::Payload) = 0
+posStates(::Payload) = 1:3
+dposStates(::Payload) = 4:6
+
 #=
 Top level functions
 =#
