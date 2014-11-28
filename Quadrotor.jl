@@ -309,7 +309,7 @@ function create_multi_agent_system(params::MultiAgentParams)
   num_quad = prod(dim)
   num_mat = num_quad * l_quad + 1
 
-  index(x) = indexDim(x, dim)
+  index(x) = index_dim(x, dim)
 
   system_dynamics = zeros(num_mat, num_mat)
   noise_dynamics = zeros(num_mat, num_quad * size(noise_mapping,2))

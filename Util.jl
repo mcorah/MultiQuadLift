@@ -1,6 +1,6 @@
 module Util
 
-export block_diag, indexDim
+export block_diag, index_dim
 
 block_diag(a) = a
 function block_diag(a,b,c...)
