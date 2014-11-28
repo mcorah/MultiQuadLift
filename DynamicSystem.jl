@@ -6,11 +6,14 @@ using Util
 export System, Specification, Trait, SystemArray
 
 # methods
-export push, height, noise_width, state_index, noise_index, init_vales,
+export push, height, noise_width, state_index, noise_index, init_vals,
   set_specification, num_state, num_noise, state_indices, noise_indices,
   system_dynamics, noise_dynamics, local_dynamics_matrix, local_noise_matrix,
   state_eye, get_states
 
+#=
+Abstract types
+=#
 abstract AbstractSystem
 abstract Trait
 
