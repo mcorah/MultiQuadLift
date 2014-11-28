@@ -10,7 +10,8 @@ export Gains, MassParams, QuadrotorParams, MultiAgentParams, State,
 
 export critically_damped, generate_controller, create_quadrotor_system,
   create_multi_agent_system, num_state, num_noise, pos_states, dpos_states,
-  att_states, datt_states, subsystem_dynamics, eval_estimator, init_vals
+  att_states, datt_states, system_dynamics, system_noise, eval_estimator,
+  init_vals
 
 #=
 Abstract types
