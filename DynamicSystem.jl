@@ -10,7 +10,7 @@ export push, height, noise_width, state_index, noise_index, init_vals,
   set_specification, num_state, num_noise, state_indices, noise_indices,
   subsystem_dynamics, subsystem_noise, construct_local_dynamic_matrix,
   construct_local_noise_matrix, state_eye, get_states, system_dynamics,
-  system_noise, subsystem_init_vals
+  system_noise, subsystem_init_vals, constant_block, state_zeros
 
 #=
 Abstract types
@@ -23,17 +23,17 @@ Specification
 =#
 abstract Specification
 
-getSystem(x::Specification) = x.container
+get_system(x::Specification) = x.container
 
-setSystem(x::Specification, s::AbstractSystem) = x.container = s
+set_system(x::Specification, s::AbstractSystem) = x.container = s
 
-height(x::Specification) = height(getSystem(x))
+height(x::Specification) = height(get_system(x))
 
-noise_width(x::Specification) = noise_width(getSystem(x))
+noise_width(x::Specification) = noise_width(get_system(x))
 
-state_index(x::Specification) = state_index(getSystem(x))
+state_index(x::Specification) = state_index(get_system(x))
 
-noise_index(x::Specification) = noise_index(getSystem(x))
+noise_index(x::Specification) = noise_index(get_system(x))
 
 function construct_local_dynamic_matrix(matrix, x::Specification)
   [spzeros(num_state(x), state_index(x)-1) matrix spzeros(num_state(x), height(x)-state_index(x)-num_state(x)+1)]
@@ -43,15 +43,28 @@ function construct_local_noise_matrix(matrix, x::Specification)
   [spzeros(num_state(x), noise_index(x)-1) matrix spzeros(num_state(x), noise_width(x)-noise_index(x)-num_noise(x)+1)]
 end
 
-function state_eye(state_fun::Function, spec::Specification)
-  spec_start = state_index(spec)
+function state_zeros(state_fun::Function, spec::Specification)
   width = height(spec)
   states = state_fun(spec)
-  mat = spzeros(length(states), width)
+  spzeros(length(states), width)
+end
+
+function state_eye(state_fun::Function, spec::Specification)
+  mat = state_zeros(state_fun, spec)
+  spec_start = state_index(spec)
+  states = state_fun(spec)
   range = ((spec_start-1) + states[1]) : ((spec_start-1) + states[end])
   mat[:, range] = speye(length(states))
   mat
 end
+
+function constant_block(c::Vector, spec::Specification)
+  width = height(spec)
+  mat = spzeros(length(c), width)
+  mat[:, end] = c
+  mat
+end
+
 
 function get_states(accessor::Function, specification::Specification, array)
   range = accessor(specification) + state_index(specification) - 1
@@ -72,7 +85,7 @@ end
 
 function set_specification(sys::System, spec::Specification)
   sys.specification = spec
-  setSystem(spec,sys)
+  set_system(spec,sys)
 end
 
 num_state(x::System) = num_state(x.specification)
