@@ -52,8 +52,8 @@ function state_eye(state_fun::Function, spec::Specification)
   mat
 end
 
-function get_states(accesor::Function, specification::Specification, array)
-  range = accesor(specification) + state_index(specification) - 1
+function get_states(accessor::Function, specification::Specification, array)
+  range = accessor(specification) + state_index(specification) - 1
   array[range, :]
 end
 
@@ -96,8 +96,8 @@ noise_dynamics(system::System) = noise_dynamics(system.specification)
 
 init_vals(system::System) = init_vals(system.specification)
 
-function get_states(accesor::Function, system::System, array)
-  get_states(accesor, system.specification, array)
+function get_states(accessor::Function, system::System, array)
+  get_states(accessor, system.specification, array)
 end
 
 
