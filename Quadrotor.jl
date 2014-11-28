@@ -76,11 +76,13 @@ end
 type MultiAgentParams
   dim
   dist
-  quadrotor
-  MultiAgentParams(dim::Real, dist, quadrotor) = new(dim * ones(Int,3), dist,
-    quadrotor) 
-  MultiAgentParams{T}(dim::Array{T}, dist, quadrotor) = new(dim, dist, quadrotor) 
+  quadrotor::QuadrotorParams
+  relative # true or false
+  link # false or spring constant
+  MultiAgentParams{T}(dim::Array{T}, dist, quadrotor; relative = false,
+    link = false) = new(dim, dist, quadrotor, relative, link) 
 end
+MultiAgentParams(dim::Real, x...) =  MultiAgentParams(dim, dim, dim, x...)
 
 type State
   p
@@ -109,22 +111,11 @@ end
 function generate_controller(params::QuadrotorParams, pos::State, command::State)
   gains = params.gains
   mass = params.mass
-  println(size(gains.Kp))
-  println(size(command.p))
-  println(size(pos.p))
-  println(size(gains.Kdp))
-  println(size(command.dp))
-  println(size(pos.dp))
   acc_des = 1/mass.M .* 
     ( (gains.Kp*(command.p - pos.p) + gains.Kdp*(command.dp - pos.dp)) )
 
   att_des = 1/g .* [0 -1.0 0; 1.0 0 0] * acc_des
 
-  show(size(gains.Ka))
-  show(size(att_des))
-  show(size(pos.a))
-  show(size(gains.Kda))
-  show(size(pos.da))
   acc_att = 1/mass.I *
     ( gains.Ka * (att_des-pos.a) + gains.Kda * (-pos.da) )
 
@@ -223,9 +214,7 @@ function subsystem_dynamics(controller::QuadrotorController, specification::Quad
   states = (pos_states, dpos_states, att_states, datt_states)
   estimator_matrices = map((x) -> eval_estimator(x..., specification), zip(estimators,states))
   pos = State(estimator_matrices...)
-  println(pos)
   command = State(map((x)->spzeros(size(x)...), estimator_matrices)...)
-  println(command)
   command.p[:,end] = specification.desired_position
 
   sparse(generate_controller(specification.params, pos, command))
@@ -256,7 +245,7 @@ function eval_estimator(estimator::RelativeEstimator, state_fun::Function, speci
   position = state_eye(state_fun, specification)
 
   function relative_estimate(target)
-    target_position = sateEye(state_fun, target_position)
+    target_position = state_eye(state_fun, target)
     relative = position - target_position
     target_desired = spzeros(size(relative)...)
     target_desired[:,end] = target.desired_position
@@ -264,9 +253,9 @@ function eval_estimator(estimator::RelativeEstimator, state_fun::Function, speci
   end
 
   desired = specification.desired_position
-  dims = [estimator.x, estimator.y, estimator.z]
+  dims = Array[estimator.x, estimator.y, estimator.z]
 
-  estimate = spzeros(position)
+  estimate = spzeros(size(position)...)
   for i=1:3
     temp = sum(map(relative_estimate,dims[i])) / length(dims[i])
     estimate[i,:] = temp[i,:]
@@ -279,72 +268,61 @@ Top level functions
 =#
 
 function create_quadrotor_system(params::QuadrotorParams, set_point=[0,0,0])
-  p = [eye(3) zeros(3,8)]
-  dp = [zeros(3,3) eye(3) zeros(3,5)]
-  a = [zeros(2,6) eye(2) zeros(2,3)]
-  da = [zeros(2,8) eye(2) zeros(2,1)]
-  pos = State(p, dp, a, da)
-
-  p = [zeros(3,10) set_point]
-  dp = zeros(3,11)
-  a = zeros(2,11)
-  da = zeros(2,11)
-  command = State(p, dp, a, da)
-
-  controller = generate_controller(params, pos, command)
-
-  println("Sizes: $(size(linear_dynamics())), $(size(controller))")
-  dynamics = block_diag(linear_dynamics(),0) + [controller; zeros(1,11)]
-  noise = params.mu/params.mass.M * [noise_mapping; 0 0 0]
-
-  SDE.Model(dynamics, noise)
+  s = System()
+  system_array = SystemArray()
+  set_specification(s, system_array)
+  quad = QuadrotorSpecification()
+  quad.desired_position = set_point
+  quad.params = params
+  quad.traits = [QuadrotorController(GlobalEstimator())]
+  set_specification(s, quad)
+  s
 end
 
 function create_multi_agent_system(params::MultiAgentParams)
+  system = System()
+  system_array = SystemArray()
+  set_specification(system, system_array)
   dim = params.dim
   dist = params.dist
   quad_params = params.quadrotor
 
-  l_quad = size(linear_dynamics(), 1)
   num_quad = prod(dim)
-  num_mat = num_quad * l_quad + 1
 
   index(x) = index_dim(x, dim)
 
-  system_dynamics = zeros(num_mat, num_mat)
-  noise_dynamics = zeros(num_mat, num_quad * size(noise_mapping,2))
-  init = zeros(num_mat)
-  init[end] = 1
+  quadrotors = [(q = QuadrotorSpecification(); q.params = quad_params; q) for i=1:num_quad]
+
+  for i = 1:num_quad
+    push(system_array, quadrotors[i])
+  end
+
   for i = 1:dim[1]
     for j = 1:dim[2]
       for k = 1:dim[3]
-        ind = index([i,j,k])
-        set_point = dist * ([i,j,k] - 1)
+        quadrotor = quadrotors[index([i,j,k])]
+        quadrotor.desired_position = dist * [i,j,k]
 
-        init[(l_quad*(ind-1)+1):(l_quad*(ind-1)+3)] = set_point
+        controller = QuadrotorController(GlobalEstimator())
 
-        p = [zeros(3,(ind-1)*(l_quad)) eye(3) zeros(3,7+(num_quad-ind)*l_quad+1)]
-        dp = [zeros(3,(ind-1)*(l_quad)+3) eye(3) zeros(3,4+(num_quad-ind)*l_quad+1)]
-        a = [zeros(2,(ind-1)*(l_quad)+6) eye(2) zeros(2,2+(num_quad-ind)*l_quad+1)]
-        da = [zeros(2,(ind-1)*(l_quad)+8) eye(2) zeros(2,(num_quad-ind)*l_quad+1)]
-        pos = State(p, dp, a, da)
+        function dim_quads(dim_num)
+          quad_index = [i,j,k]
+          this_dim = zeros(Int, 3)
+          this_dim[dim_num] = 1
+          indices = map(index, Array[quad_index+this_dim, quad_index-this_dim])
+          quadrotors[indices]
+        end
 
-        p = [zeros(3,num_mat-1) set_point]
-        dp = zeros(3,num_mat)
-        a = zeros(2,num_mat)
-        da = zeros(2,num_mat)
-        command = State(p, dp, a, da)
-
-        controller = generate_controller(quad_params, pos, command)
-        quad_dynamics = [zeros(l_quad,l_quad*(ind-1)) linear_dynamics() zeros(l_quad, l_quad * (num_quad-ind)+1)] + controller
-        system_dynamics[1+(ind-1)*l_quad:ind*l_quad, :] = quad_dynamics
-        noise_dynamics[1+(ind-1)*l_quad:ind*l_quad, 1+(ind-1)*size(noise_mapping,2):ind*size(noise_mapping,2)] = quad_params.mu/quad_params.mass.M * noise_mapping
+        if params.relative != false && !any([i,j,k].==1) && !any([i,j,k] .== dim)
+          estimator = RelativeEstimator(map(dim_quads, 1:3)...)
+          controller.position_estimator = estimator
+        end
+        quadrotor.traits = [controller]
       end
     end
   end
   
-  (SDE.Model(sparse(system_dynamics), sparse(noise_dynamics)), init)
-
+  system
 end
 
 end
