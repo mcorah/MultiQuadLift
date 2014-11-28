@@ -166,7 +166,9 @@ function subsystem_noise(x::SystemArray)
   d = spzeros(num_state(x),num_noise(x))
   for i = 1:length(x.members)
     member = x.members[i]
-    d[state_indices(member),:] = subsystem_noise(member)
+    if num_noise(member) > 0
+      d[state_indices(member),:] = subsystem_noise(member)
+    end
   end
   d
 end
