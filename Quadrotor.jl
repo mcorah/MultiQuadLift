@@ -1,10 +1,22 @@
 module Quadrotor
 
-export Gains, MassParams, QuadrotorParams, criticallyDamped, generateController,
-       MultiAgentParams, createQuadrotorSystem, createMultiAgentSystem
-
 using SDE
 using Util
+importall DynamicSystem
+
+export Gains, MassParams, QuadrotorParams, MultiAgentParams, State,
+  QuadrotorController, QuadrotorSpecification, Payload, noise_dynamics,
+  Estimator, GlobalEstimator, RelativeEstimator
+
+export critically_damped, generate_controller, create_quadrotor_system,
+  create_multi_agent_system, num_state, num_noise, pos_states, dpos_states,
+  att_states, datt_states, system_dynamics, local_noise_matrix, eval_estimator,
+  init_vals
+
+#=
+Abstract types
+=#
+abstract Estimator
 
 #=
 Global parameters and matrices
@@ -57,6 +69,8 @@ type QuadrotorParams
   mass::MassParams
   gains::Gains
   mu
+  payload_fraction
+  QuadrotorParams(m, gains, mu, p=0) = new(m, gains, mu, p)
 end
 
 type MultiAgentParams
@@ -65,8 +79,7 @@ type MultiAgentParams
   quadrotor
   MultiAgentParams(dim::Real, dist, quadrotor) = new(dim * ones(Int,3), dist,
     quadrotor) 
-  MultiAgentParams{T}(dim::Array{T}, dist, quadrotor) = new(dim, dist,
-    quadrotor) 
+  MultiAgentParams{T}(dim::Array{T}, dist, quadrotor) = new(dim, dist, quadrotor) 
 end
 
 type State
@@ -77,16 +90,10 @@ type State
 end
 
 #=
-Helper functions
+Controller design
 =#
 
-
-indexDim(coord, dim) = dot((coord-1), cumprod([1;dim][1:end-1])) + 1
-
-function pos(ind, height, width, block)
-end
-
-function criticallyDamped(params::MassParams, wn_xy, wn_z, wn_rp)
+function critically_damped(params::MassParams, wn_xy, wn_z, wn_rp)
   prop(M,wn)  = M * wn^2
   deriv(M,wn) = M * wn
   gain_mat(f,M,W) = diagm(map(x->f(M,x), W))
@@ -99,14 +106,25 @@ function criticallyDamped(params::MassParams, wn_xy, wn_z, wn_rp)
   Gains(Kp, Kdp, Ka, Kda)
 end
 
-function generateController(params::QuadrotorParams, pos::State, command::State)
+function generate_controller(params::QuadrotorParams, pos::State, command::State)
   gains = params.gains
   mass = params.mass
+  println(size(gains.Kp))
+  println(size(command.p))
+  println(size(pos.p))
+  println(size(gains.Kdp))
+  println(size(command.dp))
+  println(size(pos.dp))
   acc_des = 1/mass.M .* 
     ( (gains.Kp*(command.p - pos.p) + gains.Kdp*(command.dp - pos.dp)) )
 
   att_des = 1/g .* [0 -1.0 0; 1.0 0 0] * acc_des
 
+  show(size(gains.Ka))
+  show(size(att_des))
+  show(size(pos.a))
+  show(size(gains.Kda))
+  show(size(pos.da))
   acc_att = 1/mass.I *
     ( gains.Ka * (att_des-pos.a) + gains.Kda * (-pos.da) )
 
@@ -118,125 +136,149 @@ function generateController(params::QuadrotorParams, pos::State, command::State)
   control_mapping*U
 end
 
-abstract AbstractSystem
 
-abstract Specification
-getSystem(x::Specification) = x.container
-setSystem(x::Specification, s::AbstractSystem) = x.container = s
-height(x::Specification) = height(getSystem(x))
-noiseWidth(x::Specification) = noiseWidth(getSystem(x))
-stateIndex(x::Specification) = stateIndex(getSystem(x))
-noiseIndex(x::Specification) = noiseIndex(getSystem(x))
-
-
-
-type System <: AbstractSystem
-  state_offset::Integer
-  noise_offset::Integer
-  specification::Specification
-  parent::System
-  System(s = 0, n = 0) = new(s,n)
-end
-function setSpecification(sys::System, spec::Specification)
-  sys.specification = spec
-  setSystem(spec,sys)
-end
-numState(x::System) = numState(x.specification)
-numNoise(x::System) = numNoise(x.specification)
-height(x::System) = (isdefined(x, :parent) ? height(x.parent) : numState(x)+1)
-noiseWidth(x::System) = (isdefined(x, :parent) ? height(x.parent) : numNoise(x))
-stateIndex(x::System) = x.state_offset + (isdefined(x, :parent) ? stateIndex(x.parent) : 1)
-noiseIndex(x::System) = x.noise_offset + (isdefined(x, :parent) ? noiseIndex(x.parent) : 1)
-stateIndices(x::System) = stateIndex(x) : stateIndex(x) + numState(x) - 1
-noiseIndices(x::System) = noiseIndex(x) : noiseIndex(x) + numNoise(x) - 1
-system_dynamics(system::System) = system_dynamics(system.specification)
-noise_dynamics(system::System) = noise_dynamics(system.specification)
-
-function localDynamicsMatrix(matrix, x::Specification)
-  [spzeros(numState(x), stateIndex(x)-1) matrix spzeros(numState(x), height(x)-stateIndex(x)-numState(x)+1)]
-end
-function localNoiseMatrix(matrix, x::Specification)
-  [spzeros(numNoise(x), noiseIndex(x)-1) matrix spzeros(numNoise(x), noiseWidth(x)-noiseIndex(x)-numNoise(x)+1)]
-end
-
-type SystemArray <: Specification
-  members::Array{System,1}
+#=
+Specification subtypes
+=#
+#=
+  QuadrotorSpecification
+=#
+type QuadrotorSpecification <: Specification
   container::System
-  SystemArray() = new([])
-  SystemArray(c::System) = new(System[],c)
+  params::QuadrotorParams
+  desired_position::Vector
+  traits::Array{Trait,1}
+
+  QuadrotorSpecification() = new()
 end
-numState(x::SystemArray) = mapreduce(numState,+,0,x.members)
-numNoise(x::SystemArray) = mapreduce(numNoise,+,0,x.members)
-function push(x::SystemArray, s::System)
-  s.state_offset = mapreduce(numState,+,0,x.members)
-  s.noise_offset = mapreduce(numNoise,+,0,x.members)
-  x.members = [x.members,s]
-end
-function system_dynamics(x::SystemArray)
-  d = spzeros(numState(x),height(x))
-  for i = 1:length(x.members)
-    member = x.members[i]
-    d[stateIndices(member),:] = system_dynamics(member)
+
+num_state(::QuadrotorSpecification) = 10
+
+num_noise(::QuadrotorSpecification) = 3
+
+pos_states(::QuadrotorSpecification) = 1:3
+
+dpos_states(::QuadrotorSpecification) = 4:6
+
+att_states(::QuadrotorSpecification) = 7:8
+
+datt_states(::QuadrotorSpecification) = 9:10
+
+function system_dynamics(quad::QuadrotorSpecification)
+  if isdefined(quad, :traits)
+    local_dynamics_matrix(linear_dynamics(), quad) + sum(map((x)->system_dynamics(x, quad), quad.traits))
+  else
+    local_dynamics_matrix(linear_dynamics(), quad)
   end
-  d
 end
 
-abstract HasPosition <: Specification
-abstract HasOrientation <: Specification
-abstract Estimator
+noise_dynamics(quad::QuadrotorSpecification) = local_noise_matrix((quad.params.mu / quad.params.mass.M) * noise_mapping, quad)
 
-type Link
-  k::Real
+init_vals(quad::QuadrotorSpecification) = [quad.desired_position,zeros(7)]
+
+#=
+  Payload
+=#
+type Payload <: Specification
+  params::MassParams
+  traits::Array{Trait,1}
+end
+num_state(::Payload) = 6
+num_noise(::Payload) = 0
+pos_states(::Payload) = 1:3
+dpos_states(::Payload) = 4:6
+att_states(::Payload) = 0:-1
+datt_states(::Payload) = 0:-1
+init_vals(payload::Payload) = zeros(6)
+
+#=
+Trait subtypes
+=#
+#=
+  Link
+=#
+type Link <: Trait
+  spring_constant::Real
+  link_vector::Vector
+  source_offset::Vector
+  target_offset::Vector
   target::Specification
 end
 
-type QuadrotorController
+#=
+QuadrotorController
+=#
+type QuadrotorController <: Trait
   position_estimator::Estimator
   dposition_estimator::Estimator
   attitude_estimator::Estimator
   dattitude_estimator::Estimator
+  QuadrotorController(x::Estimator) = new(x, x, x, x)
+  QuadrotorController(x::Array{Estimator}) = new(x[1], x[2], x[3], x[4])
+  QuadrotorController(a, b, c, d) = new(a, b, c, d)
 end
 
-type QuadrotorSpecification <: Specification
-  container::System
-  params::QuadrotorParams
-  #links::Link
-  QuadrotorSpecification() = new()
+function system_dynamics(controller::QuadrotorController, specification::QuadrotorSpecification)
+  estimators = [controller.position_estimator, controller.dposition_estimator, controller.attitude_estimator, controller.dattitude_estimator]
+  states = (pos_states, dpos_states, att_states, datt_states)
+  estimator_matrices = map((x) -> eval_estimator(x..., specification), zip(estimators,states))
+  pos = State(estimator_matrices...)
+  println(pos)
+  command = State(map((x)->spzeros(size(x)...), estimator_matrices)...)
+  println(command)
+  command.p[:,end] = specification.desired_position
+
+  sparse(generate_controller(specification.params, pos, command))
 end
-numState(::QuadrotorSpecification) = 10
-numNoise(::QuadrotorSpecification) = 10
-posStates(::QuadrotorSpecification) = 1:3
-dposStates(::QuadrotorSpecification) = 4:6
-dposStates(::QuadrotorSpecification) = 4:6
-attStates(::QuadrotorSpecification) = 7:8
-dattStates(::QuadrotorSpecification) = 9:10
-system_dynamics(quad::QuadrotorSpecification) = localDynamicsMatrix(linear_dynamics(), quad)
-localNoiseMatrix(quad::QuadrotorSpecification) =
-  local_noise(x.params.mu / x.params.mass.m * noise_mapping, quad)
 
-
+#=
+Estimator subtypes
+=#
+#=
+GlobalEstimator
+=#
 type GlobalEstimator <: Estimator
-  parent::QuadrotorSpecification
+end
+function eval_estimator(estimator::GlobalEstimator, state_fun::Function, specification::Specification)
+  state_eye(state_fun, specification)
 end
 
+#=
+RelativeEstimator
+=#
 type RelativeEstimator <: Estimator
-  parent::QuadrotorSpecification
+  x::Array{Specification,1}
+  y::Array{Specification,1}
+  z::Array{Specification,1}
 end
 
-type Payload <: Specification
-  params::MassParams
-  links::Link
+function eval_estimator(estimator::RelativeEstimator, state_fun::Function, specification::Specification)
+  position = state_eye(state_fun, specification)
+
+  function relative_estimate(target)
+    target_position = sateEye(state_fun, target_position)
+    relative = position - target_position
+    target_desired = spzeros(size(relative)...)
+    target_desired[:,end] = target.desired_position
+    target_desired + relative
+  end
+
+  desired = specification.desired_position
+  dims = [estimator.x, estimator.y, estimator.z]
+
+  estimate = spzeros(position)
+  for i=1:3
+    temp = sum(map(relative_estimate,dims[i])) / length(dims[i])
+    estimate[i,:] = temp[i,:]
+  end
+  estimate
 end
-numState(::Payload) = 6
-numNoise(::Payload) = 0
-posStates(::Payload) = 1:3
-dposStates(::Payload) = 4:6
 
 #=
 Top level functions
 =#
 
-function createQuadrotorSystem(params::QuadrotorParams, set_point=[0,0,0])
+function create_quadrotor_system(params::QuadrotorParams, set_point=[0,0,0])
   p = [eye(3) zeros(3,8)]
   dp = [zeros(3,3) eye(3) zeros(3,5)]
   a = [zeros(2,6) eye(2) zeros(2,3)]
@@ -249,7 +291,7 @@ function createQuadrotorSystem(params::QuadrotorParams, set_point=[0,0,0])
   da = zeros(2,11)
   command = State(p, dp, a, da)
 
-  controller = generateController(params, pos, command)
+  controller = generate_controller(params, pos, command)
 
   println("Sizes: $(size(linear_dynamics())), $(size(controller))")
   dynamics = block_diag(linear_dynamics(),0) + [controller; zeros(1,11)]
@@ -258,7 +300,7 @@ function createQuadrotorSystem(params::QuadrotorParams, set_point=[0,0,0])
   SDE.Model(dynamics, noise)
 end
 
-function createMultiAgentSystem(params::MultiAgentParams)
+function create_multi_agent_system(params::MultiAgentParams)
   dim = params.dim
   dist = params.dist
   quad_params = params.quadrotor
@@ -293,7 +335,7 @@ function createMultiAgentSystem(params::MultiAgentParams)
         da = zeros(2,num_mat)
         command = State(p, dp, a, da)
 
-        controller = generateController(quad_params, pos, command)
+        controller = generate_controller(quad_params, pos, command)
         quad_dynamics = [zeros(l_quad,l_quad*(ind-1)) linear_dynamics() zeros(l_quad, l_quad * (num_quad-ind)+1)] + controller
         system_dynamics[1+(ind-1)*l_quad:ind*l_quad, :] = quad_dynamics
         noise_dynamics[1+(ind-1)*l_quad:ind*l_quad, 1+(ind-1)*size(noise_mapping,2):ind*size(noise_mapping,2)] = quad_params.mu/quad_params.mass.M * noise_mapping
