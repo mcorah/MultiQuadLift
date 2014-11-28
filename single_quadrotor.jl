@@ -17,11 +17,11 @@ mu = 0.1
 
 mass_params = MassParams(M,I)
 
-gains = criticallyDamped(mass_params, wn_xy, wn_z, wn_rp)
+gains = critically_damped(mass_params, wn_xy, wn_z, wn_rp)
 
 params = QuadrotorParams(mass_params, gains, mu)
 
-system = createQuadrotorSystem(params, [0.3,0.3,0.3])
+system = create_quadrotor_system(params, [0.3,0.3,0.3])
 
 @time X,T = SDE.em(system, init, tmax, dt, R, sample_rate = 100)
 

@@ -10,8 +10,7 @@ export Gains, MassParams, QuadrotorParams, MultiAgentParams, State,
 
 export critically_damped, generate_controller, create_quadrotor_system,
   create_multi_agent_system, num_state, num_noise, pos_states, dpos_states,
-  att_states, datt_states, system_dynamics, local_noise_matrix, eval_estimator,
-  init_vals
+  att_states, datt_states, subsystem_dynamics, eval_estimator, init_vals
 
 #=
 Abstract types
@@ -164,17 +163,17 @@ att_states(::QuadrotorSpecification) = 7:8
 
 datt_states(::QuadrotorSpecification) = 9:10
 
-function system_dynamics(quad::QuadrotorSpecification)
+function subsystem_dynamics(quad::QuadrotorSpecification)
   if isdefined(quad, :traits)
-    local_dynamics_matrix(linear_dynamics(), quad) + sum(map((x)->system_dynamics(x, quad), quad.traits))
+    construct_local_dynamic_matrix(linear_dynamics(), quad) + sum(map((x)->subsystem_dynamics(x, quad), quad.traits))
   else
-    local_dynamics_matrix(linear_dynamics(), quad)
+    construct_local_dynamic_matrix(linear_dynamics(), quad)
   end
 end
 
-noise_dynamics(quad::QuadrotorSpecification) = local_noise_matrix((quad.params.mu / quad.params.mass.M) * noise_mapping, quad)
+subsystem_noise(quad::QuadrotorSpecification) = construct_local_noise_matrix((quad.params.mu / quad.params.mass.M) * noise_mapping, quad)
 
-init_vals(quad::QuadrotorSpecification) = [quad.desired_position,zeros(7)]
+subsystem_init_vals(quad::QuadrotorSpecification) = [quad.desired_position,zeros(7)]
 
 #=
   Payload
@@ -189,7 +188,7 @@ pos_states(::Payload) = 1:3
 dpos_states(::Payload) = 4:6
 att_states(::Payload) = 0:-1
 datt_states(::Payload) = 0:-1
-init_vals(payload::Payload) = zeros(6)
+subsystem_init_vals(payload::Payload) = zeros(6)
 
 #=
 Trait subtypes
@@ -218,7 +217,7 @@ type QuadrotorController <: Trait
   QuadrotorController(a, b, c, d) = new(a, b, c, d)
 end
 
-function system_dynamics(controller::QuadrotorController, specification::QuadrotorSpecification)
+function subsystem_dynamics(controller::QuadrotorController, specification::QuadrotorSpecification)
   estimators = [controller.position_estimator, controller.dposition_estimator, controller.attitude_estimator, controller.dattitude_estimator]
   states = (pos_states, dpos_states, att_states, datt_states)
   estimator_matrices = map((x) -> eval_estimator(x..., specification), zip(estimators,states))

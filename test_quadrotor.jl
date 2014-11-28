@@ -29,16 +29,13 @@ for i=1:2
 end
   
 dyn = system_dynamics(s)
-noise = noise_dynamics(s)
-dyn = [dyn; spzeros(1,size(dyn,2))]
-noise = [noise; spzeros(1,size(noise,2))]
+noise = system_noise(s)
 println("dynamics")
 show(dyn); println()
 println("noise")
 show(noise)
 
-init = [init_vals(s),1]
-init[end] = 1
+init = init_vals(s)
 system = SDE.Model(dyn, noise)
 
 @time X,T = SDE.em(system, init, 2e1, 1e-4, 1, sample_rate = 100)
