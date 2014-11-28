@@ -130,7 +130,14 @@ num_noise(x::SystemArray) = mapreduce(num_noise,+,0,x.members)
 function push(x::SystemArray, s::System)
   s.state_offset = mapreduce(num_state,+,0,x.members)
   s.noise_offset = mapreduce(num_noise,+,0,x.members)
+  s.parent = x.container
   x.members = [x.members,s]
+end
+
+function push(x::SystemArray, s::Specification)
+  system = System()
+  set_specification(system, s)
+  push(x, system)
 end
 
 function subsystem_dynamics(x::SystemArray)
