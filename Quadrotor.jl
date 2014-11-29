@@ -6,12 +6,12 @@ importall DynamicSystem
 
 export Gains, MassParams, QuadrotorParams, MultiAgentParams, State,
   QuadrotorController, QuadrotorSpecification, Payload, noise_dynamics,
-  Estimator, GlobalEstimator, RelativeEstimator
+  Estimator, GlobalEstimator, RelativeEstimator, PayloadSystemParams
 
 export critically_damped, generate_controller, create_quadrotor_system,
-  create_multi_agent_system, num_state, num_noise, pos_states, dpos_states,
-  att_states, datt_states, system_dynamics, system_noise, eval_estimator,
-  init_vals
+  create_multi_agent_system, create_payload_system, num_state, num_noise,
+  pos_states, dpos_states, att_states, datt_states, system_dynamics,
+  system_noise, eval_estimator, init_vals, get_states
 
 #=
 Abstract types
@@ -78,11 +78,17 @@ type MultiAgentParams
   dist
   quadrotor::QuadrotorParams
   relative # true or false
-  link # false or spring constant
-  MultiAgentParams{T}(dim::Array{T}, dist, quadrotor; relative = false,
-    link = false) = new(dim, dist, quadrotor, relative, link) 
+  MultiAgentParams{T}(dim::Array{T}, dist, quadrotor; relative = false) =
+    new(dim, dist, quadrotor, relative) 
 end
 MultiAgentParams(dim::Real, x...) =  MultiAgentParams(dim, dim, dim, x...)
+
+type PayloadSystemParams
+  weight_fraction::Real
+  spring_constant::Real
+  multi_agent::MultiAgentParams
+  PayloadSystemParams(w, s, m) = new(w, s, m)
+end
 
 type State
   p
@@ -108,13 +114,14 @@ function critically_damped(params::MassParams, wn_xy, wn_z, wn_rp)
   Gains(Kp, Kdp, Ka, Kda)
 end
 
-function generate_controller(params::QuadrotorParams, pos::State, command::State)
+function generate_controller(params::QuadrotorParams, pos::State,
+  command::State; desired_thrust = g)
   gains = params.gains
   mass = params.mass
   acc_des = 1/mass.M .* 
     ( (gains.Kp*(command.p - pos.p) + gains.Kdp*(command.dp - pos.dp)) )
 
-  att_des = 1/g .* [0 -1.0 0; 1.0 0 0] * acc_des
+  att_des = 1/desired_thrust .* [0 -1.0 0; 1.0 0 0] * acc_des
 
   acc_att = 1/mass.I *
     ( gains.Ka * (att_des-pos.a) + gains.Kda * (-pos.da) )
@@ -135,12 +142,13 @@ Specification subtypes
   QuadrotorSpecification
 =#
 type QuadrotorSpecification <: Specification
+  desired_position::Vector
+  desired_thrust::Real
   container::System
   params::QuadrotorParams
-  desired_position::Vector
   traits::Array{Trait,1}
 
-  QuadrotorSpecification() = new()
+  QuadrotorSpecification() = new([0,0,0],g)
 end
 
 num_state(::QuadrotorSpecification) = 10
@@ -156,16 +164,21 @@ att_states(::QuadrotorSpecification) = 7:8
 datt_states(::QuadrotorSpecification) = 9:10
 
 function subsystem_dynamics(quad::QuadrotorSpecification)
+  mat::Array
   if isdefined(quad, :traits)
-    construct_local_dynamic_matrix(linear_dynamics(), quad) + sum(map((x)->subsystem_dynamics(x, quad), quad.traits))
+    mat = construct_local_dynamic_matrix(linear_dynamics(quad.desired_thrust), quad) + sum(map((x)->subsystem_dynamics(x, quad), quad.traits))
   else
-    construct_local_dynamic_matrix(linear_dynamics(), quad)
+    mat = construct_local_dynamic_matrix(linear_dynamics(quad.desired_thrust), quad)
   end
+  mat[dpos_states(quad)[3],end] += quad.desired_thrust - g
+  mat
 end
 
 subsystem_noise(quad::QuadrotorSpecification) = construct_local_noise_matrix((quad.params.mu / quad.params.mass.M) * noise_mapping, quad)
 
 subsystem_init_vals(quad::QuadrotorSpecification) = [quad.desired_position,zeros(7)]
+
+get_mass(s::QuadrotorSpecification) = s.params.mass
 
 #=
   Payload
@@ -173,7 +186,10 @@ subsystem_init_vals(quad::QuadrotorSpecification) = [quad.desired_position,zeros
 type Payload <: Specification
   params::MassParams
   traits::Array{Trait,1}
+  container::System
+  Payload() = new()
 end
+
 num_state(::Payload) = 6
 num_noise(::Payload) = 0
 pos_states(::Payload) = 1:3
@@ -181,6 +197,21 @@ dpos_states(::Payload) = 4:6
 att_states(::Payload) = 0:-1
 datt_states(::Payload) = 0:-1
 subsystem_init_vals(payload::Payload) = zeros(6)
+get_mass(p::Payload) = p.params
+
+function subsystem_dynamics(payload::Payload)
+  gravity = [0, 0, -g]
+  gravitation_acceleration = constant_block(gravity, payload)
+  base_dynamics = [state_eye(dpos_states, payload); gravitation_acceleration]
+
+  if isdefined(payload, :traits)
+    base_dynamics + sum(map((x)->subsystem_dynamics(x, payload), payload.traits))
+  else
+    base_dynamics
+  end
+end
+
+subsystem_noise(payload::Payload) = spzeros(num_state(payload),0)
 
 #=
 Trait subtypes
@@ -190,10 +221,43 @@ Trait subtypes
 =#
 type Link <: Trait
   spring_constant::Real
-  link_vector::Vector
+  length::Real
   source_offset::Vector
   target_offset::Vector
   target::Specification
+  Link(sc, l) = new(sc, l, zeros(3), zeros(3))
+end
+
+function subsystem_dynamics(link::Link, specification)
+  source_initial = subsystem_init_vals(specification)[pos_states(specification)]
+  target_initial = subsystem_init_vals(link.target)[pos_states(link.target)]
+  initial_relative = (target_initial + link.target_offset) -
+                     (source_initial + link.source_offset)
+  link_direction = initial_relative / norm(initial_relative)
+
+  f0 = link.spring_constant * (norm(initial_relative) - link.length)
+  perpendicular_constant = f0 / norm(initial_relative)
+
+  source_position = state_eye(pos_states, specification) +
+    constant_block(link.source_offset, specification)
+  target_position = state_eye(pos_states, link.target) +
+    constant_block(link.target_offset, link.target)
+
+  relative_position = target_position - source_position
+
+  unstretched_relative = constant_block(link.length * link_direction, specification)
+  deviation = relative_position - unstretched_relative
+
+  tangential_deviation = link_direction * (link_direction' * deviation)
+  perpendicular_deviation = deviation - tangential_deviation
+
+  force = link.spring_constant * tangential_deviation +
+          perpendicular_constant * perpendicular_deviation
+  acceleration = force / get_mass(specification).M
+
+  mat = spzeros(num_state(specification), height(specification))
+  mat[dpos_states(specification), :] = acceleration
+  mat
 end
 
 #=
@@ -217,7 +281,8 @@ function subsystem_dynamics(controller::QuadrotorController, specification::Quad
   command = State(map((x)->spzeros(size(x)...), estimator_matrices)...)
   command.p[:,end] = specification.desired_position
 
-  sparse(generate_controller(specification.params, pos, command))
+  sparse(generate_controller(specification.params, pos, command;
+    desired_thrust = specification.desired_thrust))
 end
 
 #=
@@ -247,8 +312,7 @@ function eval_estimator(estimator::RelativeEstimator, state_fun::Function, speci
   function relative_estimate(target)
     target_position = state_eye(state_fun, target)
     relative = position - target_position
-    target_desired = spzeros(size(relative)...)
-    target_desired[:,end] = target.desired_position
+    target_desired = constant_block(target.desired_position, target)
     target_desired + relative
   end
 
@@ -322,6 +386,101 @@ function create_multi_agent_system(params::MultiAgentParams)
     end
   end
   
+  system
+end
+
+function create_payload_system(params::PayloadSystemParams)
+  system = System()
+  system_array = SystemArray()
+  set_specification(system, system_array)
+  weight_fraction = params.weight_fraction
+  spring_constant = params.spring_constant
+
+  multi_params = params.multi_agent
+  dim = multi_params.dim
+  dist = multi_params.dist
+
+  quad_params = multi_params.quadrotor
+
+  num_quad = prod(dim)
+
+  index(x) = index_dim(x, dim)
+
+  quadrotors = [(q = QuadrotorSpecification(); q.params = quad_params;
+    q.desired_thrust = (1 + weight_fraction) * g; q) for i=1:num_quad]
+
+  payload_mass = MassParams(num_quad * weight_fraction * quad_params.mass.M, 0)
+  payload = Payload()
+  payload.params = payload_mass
+  payload.traits = Trait[]
+
+  for i = 1:num_quad
+    push(system_array, quadrotors[i])
+  end
+  push(system_array, payload)
+
+  delta_per_quad = weight_fraction * quad_params.mass.M * g /
+    (spring_constant * dim[1] * dim[2])
+
+  # controller and initial position
+  for i = 1:dim[1]
+    for j = 1:dim[2]
+      for k = 1:dim[3]
+        quadrotor = quadrotors[index([i,j,k])]
+
+        # static spring deviation is proportional to sum of quadrotors at and
+        # above the current
+        # full delta adds in deviation for each lower quadrotor
+        delta = delta_per_quad * (k * dim[3] - 1/2 * (k * (k-1)))
+        quadrotor.desired_position = dist * [i, j, k] + [0, 0, delta]
+
+        controller = QuadrotorController(GlobalEstimator())
+
+        function dim_quads(dim_num)
+          quad_index = [i,j,k]
+          this_dim = zeros(Int, 3)
+          this_dim[dim_num] = 1
+          indices = map(index, Array[quad_index+this_dim, quad_index-this_dim])
+          quadrotors[indices]
+        end
+
+        if multi_params.relative != false && !any([i,j,k] .== 1) && !any([i,j,k] .== dim)
+          estimator = RelativeEstimator(map(dim_quads, 1:3)...)
+          controller.position_estimator = estimator
+        end
+
+        quadrotor.traits = [controller]
+      end
+    end
+  end
+
+  # add links
+  for i = 1:dim[1]
+    for j = 1:dim[2]
+      for k = 1:dim[3]
+        quadrotor = quadrotors[index([i, j, k])]
+        source_link = Link(spring_constant, dist)
+        target_link = Link(spring_constant, dist)
+
+        quadrotor.traits = [quadrotor.traits, source_link]
+
+        target_link.target =  quadrotor
+
+        if k == 1
+          payload_offset = dist * [i, j, 0]
+          source_link.target_offset = payload_offset
+          target_link.source_offset = payload_offset
+          payload.traits = [payload.traits, target_link]
+          source_link.target = payload
+        else
+          target_quadrotor = quadrotors[index([i, j, k-1])]
+          source_link.target = target_quadrotor
+          target_quadrotor.traits = [target_quadrotor.traits, target_link]
+        end
+      end
+    end
+  end
+
   system
 end
 
