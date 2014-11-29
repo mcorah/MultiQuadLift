@@ -35,8 +35,9 @@ model = SDE.Model(system_matrix, noise_matrix)
 @time X,T = SDE.em(model, init, tmax, dt, R, sample_rate = 100)
 
 figure()
-len = size(Quadrotor.linear_dynamics(),1)
-for i=1:prod(dims)
-  temp = X[1+(i-1)*len:3+(i-1)*len, :]'
+poss = get_states(pos_states, system, X)
+
+for i = 1:size(poss,3)
+  temp = poss[:,:,i]'
   plot3D(temp[:,1],temp[:,2],temp[:,3])
 end
