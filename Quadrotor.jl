@@ -6,7 +6,8 @@ importall DynamicSystem
 
 export Gains, MassParams, QuadrotorParams, MultiAgentParams, State,
   QuadrotorController, QuadrotorSpecification, Payload, noise_dynamics,
-  Estimator, GlobalEstimator, RelativeEstimator, PayloadSystemParams
+  Estimator, GlobalEstimator, RelativeEstimator, PayloadSystemParams, System,
+  Specification
 
 export critically_damped, generate_controller, create_system,
   num_state, num_noise, pos_states, dpos_states, att_states, datt_states,
