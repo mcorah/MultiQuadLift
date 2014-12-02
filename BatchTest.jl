@@ -2,7 +2,7 @@ module BatchTest
 
 using HDF5, JLD
 
-export Test, execute_test
+export Test, execute_test, load_test
 
 type Test
   file_name::String
@@ -25,6 +25,7 @@ end
 load_test(test::Test) = load_test(test.file_name) 
 function load_test(file_name)
   @load file_name result
+  result
 end
 
 end
