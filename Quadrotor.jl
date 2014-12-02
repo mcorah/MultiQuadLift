@@ -8,10 +8,9 @@ export Gains, MassParams, QuadrotorParams, MultiAgentParams, State,
   QuadrotorController, QuadrotorSpecification, Payload, noise_dynamics,
   Estimator, GlobalEstimator, RelativeEstimator, PayloadSystemParams
 
-export critically_damped, generate_controller, create_quadrotor_system,
-  create_multi_agent_system, create_payload_system, num_state, num_noise,
-  pos_states, dpos_states, att_states, datt_states, system_dynamics,
-  system_noise, eval_estimator, init_vals, get_states
+export critically_damped, generate_controller, create_system,
+  num_state, num_noise, pos_states, dpos_states, att_states, datt_states,
+  system_dynamics, system_noise, eval_estimator, init_vals, get_states
 
 #=
 Abstract types
@@ -331,7 +330,7 @@ end
 Top level functions
 =#
 
-function create_quadrotor_system(params::QuadrotorParams, set_point=[0,0,0])
+function create_system(params::QuadrotorParams, set_point=[0,0,0])
   s = System()
   system_array = SystemArray()
   set_specification(s, system_array)
@@ -343,7 +342,7 @@ function create_quadrotor_system(params::QuadrotorParams, set_point=[0,0,0])
   s
 end
 
-function create_multi_agent_system(params::MultiAgentParams)
+function create_system(params::MultiAgentParams)
   system = System()
   system_array = SystemArray()
   set_specification(system, system_array)
@@ -389,7 +388,7 @@ function create_multi_agent_system(params::MultiAgentParams)
   system
 end
 
-function create_payload_system(params::PayloadSystemParams)
+function create_system(params::PayloadSystemParams)
   system = System()
   system_array = SystemArray()
   set_specification(system, system_array)

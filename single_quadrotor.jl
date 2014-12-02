@@ -19,7 +19,7 @@ gains = critically_damped(mass_params, wn_xy, wn_z, wn_rp)
 
 params = QuadrotorParams(mass_params, gains, mu)
 
-system = create_quadrotor_system(params, [0.3,0.3,0.3])
+system = create_system(params, [0.3,0.3,0.3])
 
 system_matrix = system_dynamics(system)
 noise_matrix = system_noise(system)

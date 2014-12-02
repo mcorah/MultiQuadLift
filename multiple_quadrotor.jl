@@ -24,7 +24,7 @@ quad_params = QuadrotorParams(mass_params, gains, mu)
 
 multi_params = MultiAgentParams(dims, dist, quad_params; relative=true)
 
-system = create_multi_agent_system(multi_params)
+system = create_system(multi_params)
 
 system_matrix = system_dynamics(system)
 noise_matrix = system_noise(system)

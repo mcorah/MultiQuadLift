@@ -30,7 +30,7 @@ multi_params = MultiAgentParams(dims, dist, quad_params; relative=true)
 payload_params = PayloadSystemParams(weight_fraction, spring_constant,
                                      multi_params)
 
-system = create_payload_system(payload_params)
+system = create_system(payload_params)
 
 system_matrix = system_dynamics(system)
 noise_matrix = system_noise(system)
