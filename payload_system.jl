@@ -13,7 +13,7 @@ wn_z = 5.0
 wn_xy = 2.0
 mu = 0.1
 
-dims = [4,4,8]
+dims = [1,1,1]
 dist = 1
 
 spring_constant = 1e2

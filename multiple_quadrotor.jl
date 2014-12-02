@@ -11,10 +11,10 @@ M = 1.0
 wn_rp = 9.0
 wn_z = 5.0
 wn_xy = 2.0
-mu = 0.2
+mu = 0.1
 
-dims = [3,3,3]
-dist = 0.5
+dims = [1,1,10]
+dist = 1
 
 mass_params = MassParams(M,I)
 
