@@ -71,7 +71,7 @@ function simulate_system(system::System)
   noise_matrix = system_noise(system)
 
   model = SDE.Model(system_matrix, noise_matrix)
-  X,T = SDE.em(model, init, tmax, dt, R, sample_rate = sample_rate)
+  X,T = SDE.em_matrix(model, init, tmax, dt, R, sample_rate = sample_rate)
   
   positions = get_states(pos_states, system, X)
   command = get_states(pos_states, system, init)
