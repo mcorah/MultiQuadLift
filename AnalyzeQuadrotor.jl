@@ -38,7 +38,7 @@ function compute_dav(error)
   aves = mean(error, 3)
   out = copy(error)
   for i = 1:size(error, 2)
-    ave = aves[:,i,i]
+    ave = aves[:,i,1]
     for j = 1:size(error, 3)
       out[:,i,j] -= ave
     end

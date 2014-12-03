@@ -50,7 +50,7 @@ end
 
 function series(system_fun, series_name)
   tests = data_series[series_name]
-  [(tests[:,1], file_name(system_fun, series_name, tests[:,1])) for i = 1:size(tests,2)]
+  [(tests[:,i], file_name(system_fun, series_name, tests[:,i])) for i = 1:size(tests,2)]
 end
 
 function load_test(fun::Integer, series::Integer, index::Integer)

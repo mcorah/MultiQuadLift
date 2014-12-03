@@ -14,7 +14,7 @@ type Result
   times
 end
 
-tmax = 1e2
+tmax = 2e1
 dt = 4e-4
 sample_rate = 100
 R = 1
