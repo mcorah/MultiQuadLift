@@ -9,11 +9,9 @@ export data_series, test_types
 # file_name
 # system_type dim dim dim.test
 data_series = {
-  "1d_z" => [1, 1, 2].^([0:10]'),
-  "1d_y" => [1, 2, 1].^([0:10]'),
-  "2d_z" => [2, 2, 1].^([0:6]'),
-  "2d_y" => [2, 1, 2].^([0:6]'),
-  "3d" => [2, 2, 2].^([0:5]')
+  "1d" => [1, 1, 2].^([0:10]'),
+  "2d" => [1, 2, 2].^([0:6]'),
+  "3d" => [2, 2, 2].^([0:4]')
   }
 
 test_types = [multi_agent_system, relative_multi_agent_system, payload_system,
