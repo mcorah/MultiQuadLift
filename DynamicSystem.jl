@@ -144,7 +144,7 @@ function push(x::SystemArray, s::System)
   s.state_offset = mapreduce(num_state,+,0,x.members)
   s.noise_offset = mapreduce(num_noise,+,0,x.members)
   s.parent = x.container
-  x.members = [x.members,s]
+  push!(x.members,s)
 end
 
 function push(x::SystemArray, s::Specification)
