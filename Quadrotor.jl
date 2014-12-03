@@ -301,9 +301,7 @@ end
 RelativeEstimator
 =#
 type RelativeEstimator <: Estimator
-  x::Array{Specification,1}
-  y::Array{Specification,1}
-  z::Array{Specification,1}
+  neigbors::Array{Specification,1}
 end
 
 function eval_estimator(estimator::RelativeEstimator, state_fun::Function, specification::Specification)
@@ -316,18 +314,8 @@ function eval_estimator(estimator::RelativeEstimator, state_fun::Function, speci
     target_desired + relative
   end
 
-  desired = specification.desired_position
-  dims = Array[estimator.x, estimator.y, estimator.z]
-
   estimate = spzeros(size(position)...)
-  for i=1:3
-    if length(dims[i]) > 0
-      temp = sum(map(relative_estimate,dims[i])) / length(dims[i])
-      estimate[i,:] = temp[i,:]
-    else
-      estimate[i,:] = position[i,:]
-    end
-  end
+  estimate[:,:] = sum(map(relative_estimate,estimator.neigbors)) / length(estimator.neigbors)
   estimate
 end
 
@@ -376,19 +364,25 @@ function create_system(params::MultiAgentParams)
         function dim_quads(dim_num)
           quad_index = [i,j,k]
           # switch to absolute position at ends
-          if quad_index[dim_num] == 1 || quad_index[dim_num] == dim[dim_num]
-            Specification[]
-          else
-            this_dim = zeros(Int, 3)
-            this_dim[dim_num] = 1
-            indices = map(index, Array[quad_index+this_dim, quad_index-this_dim])
-            quadrotors[indices]
+          quads = Specification[]
+
+          this_dim = zeros(Int, 3)
+          this_dim[dim_num] = 1
+
+          if quad_index[dim_num] != 1 
+            push!(quads, quadrotors[index(quad_index - this_dim)])
           end
+          if quad_index[dim_num] != dim[dim_num]
+            push!(quads, quadrotors[index(quad_index + this_dim)])
+          end
+          quads
         end
 
-        estimator = RelativeEstimator(map(dim_quads, 1:3)...)
-        controller.position_estimator = estimator
-
+        if k != 1
+          estimator = RelativeEstimator(vcat(map(dim_quads, 1:3)...))
+          controller.position_estimator = estimator
+        end
+        
         quadrotor.traits = [controller]
       end
     end
@@ -446,18 +440,24 @@ function create_system(params::PayloadSystemParams)
         function dim_quads(dim_num)
           quad_index = [i,j,k]
           # switch to absolute position at ends
-          if quad_index[dim_num] == 1 || quad_index[dim_num] == dim[dim_num]
-            Specification[]
-          else
-            this_dim = zeros(Int, 3)
-            this_dim[dim_num] = 1
-            indices = map(index, Array[quad_index+this_dim, quad_index-this_dim])
-            quadrotors[indices]
+          quads = Specification[]
+
+          this_dim = zeros(Int, 3)
+          this_dim[dim_num] = 1
+
+          if quad_index[dim_num] != 1 
+            push!(quads, quadrotors[index(quad_index - this_dim)])
           end
+          if quad_index[dim_num] != dim[dim_num]
+            push!(quads, quadrotors[index(quad_index + this_dim)])
+          end
+          quads
         end
 
-        estimator = RelativeEstimator(map(dim_quads, 1:3)...)
-        controller.position_estimator = estimator
+        if k != 1
+          estimator = RelativeEstimator(vcat(map(dim_quads, 1:3)...))
+          controller.position_estimator = estimator
+        end
 
         quadrotor.traits = [controller]
       end
