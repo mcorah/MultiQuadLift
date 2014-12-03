@@ -14,7 +14,7 @@ type Result
   times
 end
 
-tmax = 1e1
+tmax = 1e2
 dt = 4e-4
 sample_rate = 100
 R = 1
@@ -40,10 +40,7 @@ function multi_agent_system(dims; relative=false)
 
   multi_params = MultiAgentParams(dims, dist, quad_params; relative=relative)
 
-  payload_params = PayloadSystemParams(weight_fraction, spring_constant,
-                                       multi_params)
-
-  create_system(payload_params)
+  create_system(multi_params)
 end
 
 function payload_system(dims; relative=false)
@@ -71,7 +68,7 @@ function simulate_system(system::System)
   noise_matrix = system_noise(system)
 
   model = SDE.Model(system_matrix, noise_matrix)
-  X,T = SDE.em_matrix(model, init, tmax, dt, R, sample_rate = sample_rate)
+  X,T = SDE.em(model, init, tmax, dt, R, sample_rate = sample_rate)
   
   positions = get_states(pos_states, system, X)
   command = get_states(pos_states, system, init)
