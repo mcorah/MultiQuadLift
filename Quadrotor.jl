@@ -427,8 +427,7 @@ function create_system(params::PayloadSystemParams)
   end
   push(system_array, payload)
 
-  delta_per_quad = weight_fraction * quad_params.mass.M * g /
-    (spring_constant * dim[1] * dim[2])
+  delta_per_quad = weight_fraction * quad_params.mass.M * g / spring_constant
 
   # controller and initial position
   for i = 1:dim[1]
